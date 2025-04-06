@@ -13,6 +13,9 @@ function processAddresses() {
         // Process each address
         addresses.forEach(address => {
             if (address.city && address.street && address.houseNum) {
+                // Show loading indicator before sending to server
+                appendLoadingIndicator(address.parentElement, address);
+
                 sendAddressToServer(address).then(result => {
                     if (result) {
                         console.log("Processed data for", address.street, address.houseNum, ":", result);
@@ -24,6 +27,27 @@ function processAddresses() {
         });
     } else {
         console.log("No addresses found on the page at this time.")
+    }
+}
+
+function appendLoadingIndicator(parentElement, address) {
+    // Generate a consistent hash based on address components
+    const addressHash = generateAddressHash(address);
+    const uniqueId = `addr_info_${addressHash}`;
+
+    let resultsDiv = document.getElementById(uniqueId);
+    if (!resultsDiv) {
+        resultsDiv = document.createElement("div");
+        resultsDiv.id = uniqueId;
+        resultsDiv.style.marginTop = "5px";
+        resultsDiv.style.fontSize = "14px";
+        resultsDiv.style.fontWeight = "normal";
+        resultsDiv.style.color = "#333";
+        resultsDiv.style.background = "#f8f8f8";
+        resultsDiv.style.padding = "5px";
+        resultsDiv.style.borderRadius = "4px";
+        resultsDiv.innerHTML = "Loading information..."; // Loading message
+        parentElement.insertAdjacentElement("afterend", resultsDiv);
     }
 }
 
@@ -137,9 +161,9 @@ async function sendAddressToServer(address) {
     const uniqueId = `addr_info_${addressHash}`;
     const ttlMs = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-    if (document.getElementById(uniqueId)) {
-        return null;
-    }
+    // if (document.getElementById(uniqueId)) {
+    //     return null;
+    // }
 
     const cachedRaw = localStorage.getItem(uniqueId);
     if (cachedRaw) {
