@@ -1,0 +1,141 @@
+function generateAddressHash(address) {
+    // Normalize address components to lowercase and trim whitespace
+    const street = (address.street || "").toLowerCase().trim();
+    const houseNum = (address.houseNum || "").toLowerCase().trim();
+    const city = (address.city || "").toLowerCase().trim();
+
+    // Combine components and create a simple hash
+    const addressString = `${street}_${houseNum}_${city}`;
+
+    // Create a numeric hash (simple but effective for this use case)
+    let hash = 0;
+    for (let i = 0; i < addressString.length; i++) {
+        const char = addressString.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+    }
+
+    // Convert to a string and ensure it's positive by using absolute value
+    return Math.abs(hash).toString(36);
+}
+
+function extractAddressFromPage() {
+    // Try the single address case first
+    const h1Element = document.querySelector("h1[class^='heading_heading_']");
+    const h2Element = document.querySelector("h2[class^='address_address']");
+
+    if (h1Element && h2Element) {
+        const addressParts = h1Element.textContent.trim().split(" ");
+        const houseNum = addressParts.pop(); // Last part is the house number
+        const street = addressParts.join(" "); // Remaining is the street name
+
+        const cityParts = h2Element.textContent.trim().split(", ");
+        const city = cityParts.pop(); // Last part is the city name
+
+        return [{ city, street, houseNum, parentElement: h1Element }];
+    }
+
+    // If single address not found, try to find multiple addresses
+    const addressHeadings = document.querySelectorAll("span[class^='item-data-content_heading__']");
+    if (addressHeadings && addressHeadings.length > 0) {
+        const addresses = [];
+
+        addressHeadings.forEach(heading => {
+            const addressText = heading.textContent.trim();
+            const addressParts = addressText.split(" ");
+            const houseNum = addressParts.pop(); // Last part is house number
+            const street = addressParts.join(" "); // Remaining is street name
+
+            // Find the closest city element - should be a sibling or nearby element
+            const cityElement = heading.parentElement.parentElement.children[1];
+
+            if (cityElement) {
+                const cityText = cityElement.textContent.trim();
+                const cityParts = cityText.split(", ");
+                const city = cityParts.pop(); // Last part is city
+
+                addresses.push({ city, street, houseNum, parentElement: heading });
+            }
+        });
+
+        if (addresses.length > 0) {
+            return addresses;
+        }
+    }
+
+    console.error("Could not find address elements on the page.");
+    return null;
+}
+
+async function sendAddressToServer(address) {
+    const url = "https://gcp.gtelem.com/process_address";
+    const address_only = { city: address.city, street: address.street, houseNum: address.houseNum };
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(address_only)
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log("Server response:", data);
+
+        // Append results to the page
+        appendResultsToPage(address.parentElement, data, address);
+
+        return data;
+    } catch (error) {
+        console.error("Error sending address to server:", error);
+        return null;
+    }
+}
+
+function appendResultsToPage(parentElement, data, address) {
+    const uniqueId = generateAddressHash(address)
+    let resultsDiv = document.getElementById(uniqueId);
+    if (!resultsDiv) {
+        resultsDiv = document.createElement("span");
+        resultsDiv.id = uniqueId;
+        resultsDiv.style.marginTop = "5px";
+        resultsDiv.style.fontSize = "14px";
+        resultsDiv.style.fontWeight = "normal";
+        parentElement.insertAdjacentElement("afterend", resultsDiv);
+    } else {
+        resultsDiv.innerHTML = "";
+    }
+    resultsDiv.dir = 'ltr'
+
+    if (data.travel_times) {
+        if (data.travel_times.walking) {
+            resultsDiv.innerHTML += `🚶 ${data.travel_times.walking.duration} | `;
+        }
+        if (data.travel_times.biking) {
+            resultsDiv.innerHTML += `🚴 ${data.travel_times.biking.duration} | `;
+        }
+    }
+
+    if (data.ftth && data.ftth.Status) {
+        resultsDiv.innerHTML += data.ftth.Status === "available" ? "🛜" : "📵";
+    }
+}
+
+// Main execution
+const addresses = extractAddressFromPage();
+console.log("Extracted Addresses:", addresses);
+
+if (addresses && addresses.length > 0) {
+    // Process each address
+    addresses.forEach(address => {
+        sendAddressToServer(address).then(result => {
+            if (result) {
+                console.log("Processed data for", address.street, address.houseNum, ":", result);
+            }
+        });
+    });
+}
