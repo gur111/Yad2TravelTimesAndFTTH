@@ -1,14 +1,42 @@
+// Set the debug flag (set to true for verbose logging)
+const debug = true;
+
+// Centralized log function
+function log(level, message) {
+    if (level === 'verbose' && !debug) {
+        return; // Skip verbose logging if debug is off
+    }
+
+    // Always log errors to the console
+    if (level === 'error') {
+        console.error(`[YADZ] Error: ${message}`);
+        return;
+    }
+
+    // Get the stack trace to extract file name and line number
+    const stack = new Error().stack;
+    const callerLine = stack.split("\n")[2]?.trim();
+
+    // Extract file name from the line
+    const fileNameMatch = callerLine?.match(/([a-zA-Z0-9_-]+\.js):(\d+):/);
+    const fileName = fileNameMatch ? fileNameMatch[1] : "Unknown file";
+
+    console.log(`[YADZ] ${level}: ${message} (at ${fileName})`);
+}
 // Wait for the page to be fully loaded and give time for any dynamic content
-console.log("Yads Extension for extracting addresses");
-setTimeout(initializeAddressExtraction, 4000);
+log('verbose', "Yads Extension for extracting addresses");
+initializeAddressExtraction();
+document.addEventListener("DOMContentLoaded", function () {
+    // log('verbose', "Yads Extension for extracting addresses");
+});
 
 // Main function to process addresses on the page
 function processAddresses() {
-    console.log("Finding addresses");
+    log('verbose', "Finding addresses");
     const addresses = extractAddressFromPage();
 
     if (addresses && addresses.length > 0) {
-        console.log(`Found ${addresses.length} addresses to process`);
+        log('verbose', `Found ${addresses.length} addresses to process`);
 
         // Process each address
         addresses.forEach(address => {
@@ -18,15 +46,15 @@ function processAddresses() {
 
                 sendAddressToServer(address).then(result => {
                     if (result) {
-                        console.log("Processed data for", address.street, address.houseNum, ":", result);
+                        log('verbose', `Processed data for ${address.street} ${address.houseNum}: ${JSON.stringify(result)}`);
                     }
                 });
             } else {
-                console.warn("Incomplete address data:", address);
+                log('verbose', `Incomplete address data: ${JSON.stringify(address)}`);
             }
         });
     } else {
-        console.log("No addresses found on the page at this time.")
+        log('verbose', "No addresses found on the page at this time.");
     }
 }
 
@@ -53,10 +81,16 @@ function appendLoadingIndicator(parentElement, address) {
 
 // Add a mutation observer to handle dynamically loaded content
 function initializeAddressExtraction() {
-    console.log("Yad2 Address Info Extension initialized2");
+    log("info", "Yad2 Address Info Extension initialized");
 
-    // Run the initial extraction
-    processAddresses();
+    // Check if the DOM is already loaded
+    if (document.readyState === "loading") {
+        // If the DOM is still loading, add an event listener
+        document.addEventListener("DOMContentLoaded", processAddresses);
+    } else {
+        // If the DOM is already loaded, run the code immediately
+        processAddresses();
+    }
 
     // Set up an observer to detect new content
     const observer = new MutationObserver((mutations) => {
@@ -98,10 +132,10 @@ function generateAddressHash(address) {
 }
 
 function extractAddressFromPage() {
-    console.log("Extracting address(es)");
+    log('verbose', "Extracting address(es)");
     const url = window.location.href;
     if (url.startsWith("https://www.yad2.co.il/realestate/item")) {
-        console.log("Extracting single address")
+        log('verbose', "Extracting single address")
         // Try the single address case first
         const h1Element = document.querySelector("h1[class^='heading_heading_']");
         const h2Element = document.querySelector("h2[class^='address_address']");
@@ -117,10 +151,10 @@ function extractAddressFromPage() {
             return [{ city, street, houseNum, parentElement: h1Element }];
         }
 
-        console.log("No single address found on the page at this time.");
+        log('verbose', "No single address found on the page at this time.");
         return null;
     } else if (url.startsWith("https://www.yad2.co.il/realestate/rent")) {
-        console.log("Extracting multiple addresses")
+        log('verbose', "Extracting multiple addresses")
         // If single address not found, try to find multiple addresses
         const addressHeadings = document.querySelectorAll("span[class^='item-data-content_heading__']");
         if (addressHeadings && addressHeadings.length > 0) {
@@ -149,10 +183,10 @@ function extractAddressFromPage() {
                 return addresses;
             }
         }
-        console.log("No addresses found on the page at this time.");
+        log('verbose', "No addresses found on the page at this time.");
         return null;
     }
-    console.log("Not a supported page for extracting addresses")
+    log('verbose', "Not a supported page for extracting addresses")
     return null;
 }
 
@@ -160,10 +194,6 @@ async function sendAddressToServer(address) {
     const addressHash = generateAddressHash(address);
     const uniqueId = `addr_info_${addressHash}`;
     const ttlMs = 7 * 24 * 60 * 60 * 1000; // 7 days
-
-    // if (document.getElementById(uniqueId)) {
-    //     return null;
-    // }
 
     const cachedRaw = localStorage.getItem(uniqueId);
     if (cachedRaw) {
@@ -173,14 +203,14 @@ async function sendAddressToServer(address) {
             const hasFTTH = data && data.ftth && data.ftth.IsSuccessful;
 
             if (isFresh && hasFTTH) {
-                console.log("Using cached data for", address.street, address.houseNum);
+                log('verbose', `Using cached data for ${address.street} ${address.houseNum}`);
                 appendResultsToPage(address.parentElement, data, address);
                 return data;
             } else {
                 localStorage.removeItem(uniqueId); // Expired or incomplete
             }
         } catch (e) {
-            console.warn("Cache parse error, ignoring cache");
+            log('error', `Cache parse error: ${e.message}`);
             localStorage.removeItem(uniqueId);
         }
     }
@@ -203,7 +233,7 @@ async function sendAddressToServer(address) {
         }
 
         const data = await response.json();
-        console.log("Server response:", data);
+        log('verbose', `Server response: ${JSON.stringify(data)}`);
 
         // Cache result
         localStorage.setItem(uniqueId, JSON.stringify({
@@ -214,11 +244,10 @@ async function sendAddressToServer(address) {
         appendResultsToPage(address.parentElement, data, address);
         return data;
     } catch (error) {
-        console.error("Error sending address to server:", error);
+        log('error', `Error sending address to server: ${error.message}`);
         return null;
     }
 }
-
 
 function appendResultsToPage(parentElement, data, address) {
     // Generate a consistent hash based on address components

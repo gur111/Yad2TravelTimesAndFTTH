@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "Yad2 Address Info",
-    "version": "1.0",
-    "description": "Automatically displays additional address information on Yad2 rental listings",
+    "name": "Yadz O2 Address Info",
+    "version": "1.1",
+    "description": "Automatically displays additional address information on Yad2 rental listings and travel times to Herzliya O2 Apple Office",
     "icons": {
       "16": "icon16.png",
       "48": "icon48.png",
@@ -20,6 +20,5 @@
     ],
     "permissions": [],
     "host_permissions": [
-      "http://localhost:5001/*"
     ]
   }
